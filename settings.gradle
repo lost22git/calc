@@ -1,4 +1,9 @@
-
+pluginManagement {
+    repositories {
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
 
 rootProject.name = 'calc'
 include('lib')
