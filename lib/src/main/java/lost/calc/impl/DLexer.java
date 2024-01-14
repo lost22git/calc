@@ -3,6 +3,7 @@ package lost.calc.impl;
 import lost.calc.api.Lexer;
 import lost.calc.api.Operator;
 import lost.calc.api.Token;
+import lost.calc.api.Token.*;
 import lost.calc.error.LexerError;
 
 import java.util.Arrays;
@@ -84,17 +85,17 @@ public class DLexer implements Lexer {
         // `(`
         else if (c == '(') {
           var t = changeState(stInit, pos);
-          result = (t != null) ? t : new Token.OpenToken(Token.Slice.both(pos++));
+          result = (t != null) ? t : new OpenToken(Slice.both(pos++));
         }
         // `)`
         else if (c == ')') {
           var t = changeState(stInit, pos);
-          result = (t != null) ? t : new Token.CloseToken(Token.Slice.both(pos++));
+          result = (t != null) ? t : new CloseToken(Slice.both(pos++));
         }
         // `,`
         else if (c == ',') {
           var t = changeState(stInit, pos);
-          result = (t != null) ? t : new Token.CommaToken(Token.Slice.both(pos++));
+          result = (t != null) ? t : new CommaToken(Slice.both(pos++));
         }
         // 非法字符
         else throw new LexerError(STR."[\{pos}]: `\{c}` is not a valid token 😡");
@@ -119,24 +120,24 @@ public class DLexer implements Lexer {
 
       if (currentStateData.state == stInit) return null;
 
-      var tokenSlice = new Token.Slice(currentStateData.start, pCurrent - 1);
+      var tokenSlice = new Slice(currentStateData.start, pCurrent - 1);
       var tokenString = new String(this.chars, tokenSlice.start(), tokenSlice.length());
 
       return switch (currentStateData.state) {
         case stInit -> null;
         case stInteger, stDouble -> {
           try {
-            yield new Token.NumberToken(Double.parseDouble(tokenString), tokenSlice);
+            yield new NumberToken(Double.parseDouble(tokenString), tokenSlice);
           } catch (Exception e) {
             throw new LexerError(STR."\{tokenSlice}: `\{tokenString}` is not a valid number 😡");
           }
         }
-        case stIdent -> new Token.IdentToken(tokenString, tokenSlice);
+        case stIdent -> new IdentToken(tokenString, tokenSlice);
         case stOperator -> {
           var operator = Operator.find(tokenString);
           if (operator == null)
             throw new LexerError(STR."\{tokenSlice}: `\{tokenString}` is not a valid operator 😡");
-          yield new Token.OperatorToken(operator, tokenSlice);
+          yield new OperatorToken(operator, tokenSlice);
         }
       };
     }

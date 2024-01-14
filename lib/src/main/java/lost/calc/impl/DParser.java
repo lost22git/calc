@@ -3,7 +3,9 @@ package lost.calc.impl;
 import lost.calc.api.Operator;
 import lost.calc.api.Parser;
 import lost.calc.api.Token;
+import lost.calc.api.Token.*;
 import lost.calc.api.Tree;
+import lost.calc.api.Tree.*;
 import lost.calc.error.ParserError;
 
 import java.util.ArrayDeque;
@@ -32,107 +34,12 @@ public class DParser implements Parser {
 
   @Override
   public Tree parse(Iterable<Token> tokens) {
-    var result = new Tree.ParTree(Token.Slice.both(9999));
+    var result = new ParTree(Slice.both(9999));
     var stack = new ArrayDeque<Tree>();
     stack.push(result);
 
     for (Token token : tokens) {
-      var cursor = stack.peek();
-      assert cursor != null;
-
-      switch (token) {
-        case null -> throw new AssertionError("token must be not null but a BUG 😡");
-        case Token.NumberToken(double value, Token.Slice slice) -> {
-          if (cursor.isCompleted()) throw new ParserError(token);
-          var current = new Tree.NumberTree(value, slice);
-          cursor.kids().addLast(current);
-          stack.push(current);
-        }
-        case Token.IdentToken(String value, Token.Slice slice) -> {
-          if (cursor.isCompleted()) throw new ParserError(token);
-          var current = new Tree.VarTree(value, slice);
-          cursor.kids().addLast(current);
-          stack.push(current);
-        }
-        case Token.OperatorToken(Operator operator, Token.Slice slice) -> {
-          var current = switch (operator) {
-            case Not -> new Tree.PrefixTree(Operator.Not, slice);
-            case Pow, Multi, Div, Plus, Minus, Mod, And, Or, Lt, Le, Gt, Ge, Eq, Ne ->
-                    new Tree.InfixTree(operator, slice);
-          };
-          if (cursor.isCompleted()) {
-            try {
-              cursorUpTo(stack, c -> c instanceof Tree.ParTree
-                                     || c instanceof Tree.CallTree
-                                     || (c instanceof Tree.InfixTree i && i.value.order < operator.order)
-                                     || (c instanceof Tree.PrefixTree p && p.value.order < operator.order));
-
-            } catch (EmptyStackException e) {
-              throw new ParserError(token);
-            }
-            cursor = stack.peek();
-            assert cursor != null;
-            current.kids().addLast(cursor.kids().removeLast());
-            cursor.kids().addLast(current);
-            stack.push(current);
-          } else {
-            if (current instanceof Tree.PrefixTree) {
-              cursor.kids().addLast(current);
-              stack.push(current);
-            } else {
-              throw new ParserError(token);
-            }
-          }
-        }
-        case Token.OpenToken(Token.Slice slice) -> {
-          // VarTree + `(`  => CallTree
-          if (cursor instanceof Tree.VarTree v) {
-            var current = new Tree.CallTree(v.value, stack.pop().slice());
-            cursor = stack.peek();
-            assert cursor != null;
-            cursor.kids().removeLast();
-            cursor.kids().addLast(current);
-            stack.push(current);
-          } else {
-            if (cursor.isCompleted()) throw new ParserError(token);
-            var current = new Tree.ParTree(slice);
-            cursor.kids().addLast(current);
-            stack.push(current);
-          }
-        }
-        case Token.CloseToken(Token.Slice _) -> {
-          if (result == cursor)
-            throw new ParserError(token);
-          if (cursor.isCompleted()) {
-            try {
-              cursorUpTo(stack, c -> (c instanceof Tree.ParTree || c instanceof Tree.CallTree));
-            } catch (EmptyStackException e) {
-              throw new ParserError(token);
-            }
-            cursor = stack.peek();
-            assert cursor != null;
-            if (cursor == result)
-              throw new ParserError(token);
-            cursor.markCompleted();
-          } else {
-            if (cursor instanceof Tree.ParTree p && !p.kids().isEmpty()
-                || cursor instanceof Tree.CallTree) {
-              cursor.markCompleted();
-            } else {
-              throw new ParserError(token);
-            }
-          }
-        }
-        case Token.CommaToken(Token.Slice _) -> {
-          if (cursor == result || !cursor.isCompleted())
-            throw new ParserError(token);
-          try {
-            cursorUpTo(stack, c -> c instanceof Tree.CallTree);
-          } catch (EmptyStackException e) {
-            throw new ParserError(token);
-          }
-        }
-      }
+      feedToken(token, stack, result);
     }
 
     result.markCompleted();
@@ -143,5 +50,103 @@ public class DParser implements Parser {
       }
     }
     return result;
+  }
+
+  private void feedToken(Token token,
+                         ArrayDeque<Tree> stack,
+                         ParTree result) {
+    var cursor = stack.peek();
+    assert cursor != null;
+
+    switch (token) {
+      case null -> throw new AssertionError("token must be not null but a BUG 😡");
+      case NumberToken(double value, Slice slice) -> {
+        if (cursor.isCompleted()) throw new ParserError(token);
+        var current = new NumberTree(value, slice);
+        cursor.kids().addLast(current);
+        stack.push(current);
+      }
+      case IdentToken(String value, Slice slice) -> {
+        if (cursor.isCompleted()) throw new ParserError(token);
+        var current = new VarTree(value, slice);
+        cursor.kids().addLast(current);
+        stack.push(current);
+      }
+      case OperatorToken(Operator operator, Slice slice) -> {
+        var current = switch (operator) {
+          case Not -> new PrefixTree(Operator.Not, slice);
+          case Pow, Multi, Div, Plus, Minus, Mod, And, Or, Lt, Le, Gt, Ge, Eq, Ne ->
+                  new InfixTree(operator, slice);
+        };
+        if (cursor.isCompleted()) {
+          try {
+            cursorUpTo(stack, c -> c instanceof ParTree
+                                   || c instanceof CallTree
+                                   || (c instanceof InfixTree i && i.value.order < operator.order)
+                                   || (c instanceof PrefixTree p && p.value.order < operator.order));
+
+          } catch (EmptyStackException e) {
+            throw new ParserError(token);
+          }
+          cursor = stack.peek();
+          assert cursor != null;
+          current.kids().addLast(cursor.kids().removeLast());
+          cursor.kids().addLast(current);
+          stack.push(current);
+        } else {
+          if (current instanceof PrefixTree) {
+            cursor.kids().addLast(current);
+            stack.push(current);
+          } else {
+            throw new ParserError(token);
+          }
+        }
+      }
+      case OpenToken(Slice slice) -> {
+        // VarTree + `(`  => CallTree
+        if (cursor instanceof VarTree v) {
+          var current = new CallTree(v.value, stack.pop().slice());
+          cursor = stack.peek();
+          assert cursor != null;
+          cursor.kids().removeLast();
+          cursor.kids().addLast(current);
+          stack.push(current);
+        } else {
+          if (cursor.isCompleted()) throw new ParserError(token);
+          var current = new ParTree(slice);
+          cursor.kids().addLast(current);
+          stack.push(current);
+        }
+      }
+      case CloseToken(Slice _) -> {
+        if (result == cursor) throw new ParserError(token);
+        if (cursor.isCompleted()) {
+          try {
+            cursorUpTo(stack, c -> (c instanceof ParTree || c instanceof CallTree));
+          } catch (EmptyStackException e) {
+            throw new ParserError(token);
+          }
+          cursor = stack.peek();
+          assert cursor != null;
+          if (cursor == result) throw new ParserError(token);
+          cursor.markCompleted();
+        } else {
+          if (cursor instanceof ParTree p && !p.kids().isEmpty()
+              || cursor instanceof CallTree) {
+            cursor.markCompleted();
+          } else {
+            throw new ParserError(token);
+          }
+        }
+      }
+      case CommaToken(Slice _) -> {
+        if (cursor == result || !cursor.isCompleted()) throw new ParserError(token);
+        try {
+          cursorUpTo(stack, c -> c instanceof CallTree);
+        } catch (EmptyStackException e) {
+          throw new ParserError(token);
+        }
+      }
+    }
   }
 }
