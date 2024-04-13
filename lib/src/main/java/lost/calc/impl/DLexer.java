@@ -54,63 +54,89 @@ public class DLexer implements Lexer {
     private Token parseNext() {
       Token result = null;
       int len = chars.length;
-      while (result == null) {
-        if (pos > len) return null;
+      while (result == null && pos <= len) {
         char c = (pos == len) ? ' ' : chars[pos]; // EOF
 
         // 空白字符
-        if (Character.isWhitespace(c)) result = changeState(stInit, pos++);
+        if (Character.isWhitespace(c))
+          result = tryUpdateStateAndGenerateToken(stInit, pos++);
+
           // 数字
-        else if (Character.isDigit(c)) result = switch (this.stateData.state) {
-          case stDouble -> changeState(stDouble, pos++);
-          case stIdent -> changeState(stIdent, pos++);
-          default -> changeState(stInteger, pos++);
-        };
+        else if (Character.isDigit(c))
+          result = switch (this.stateData.state) {
+            case stDouble -> tryUpdateStateAndGenerateToken(stDouble, pos++);
+            case stIdent -> tryUpdateStateAndGenerateToken(stIdent, pos++);
+            default -> tryUpdateStateAndGenerateToken(stInteger, pos++);
+          };
+
           // `.`
         else if (c == '.') {
           if (this.stateData.state == stInteger) {
-            result = changeState(stDouble, pos++);
+            result = tryUpdateStateAndGenerateToken(stDouble, pos++);
           } else {
             throw new LexerError(STR."[\{pos}]: `.` must only be as decimal point of number 😡");
           }
         }
+
         // 字母
-        else if (Character.isLetter(c)) {
-          result = changeState(stIdent, pos++);
-        }
-        // 运算符
-        else if (Arrays.binarySearch(Operator.CHARS, c) >= 0) {
-          result = changeState(stOperator, pos++);
-        }
-        // `(`
+        else if (Character.isLetter(c))
+          result = tryUpdateStateAndGenerateToken(stIdent, pos++);
+
+          // 运算符
+        else if (Arrays.binarySearch(Operator.CHARS, c) >= 0)
+          result = tryUpdateStateAndGenerateToken(stOperator, pos++);
+
+          // `(`
         else if (c == '(') {
-          var t = changeState(stInit, pos);
+          var t = tryUpdateStateAndGenerateToken(stInit, pos);
           result = (t != null) ? t : new OpenToken(Slice.both(pos++));
         }
+
         // `)`
         else if (c == ')') {
-          var t = changeState(stInit, pos);
+          var t = tryUpdateStateAndGenerateToken(stInit, pos);
           result = (t != null) ? t : new CloseToken(Slice.both(pos++));
         }
+
         // `,`
         else if (c == ',') {
-          var t = changeState(stInit, pos);
+          var t = tryUpdateStateAndGenerateToken(stInit, pos);
           result = (t != null) ? t : new CommaToken(Slice.both(pos++));
         }
+
         // 非法字符
         else throw new LexerError(STR."[\{pos}]: `\{c}` is not a valid token 😡");
       }
+
       return result;
     }
 
-    private Token changeState(State newState,
-                              int pCurrent) {
+    private Token tryUpdateStateAndGenerateToken(State newState,
+                                                 int pCurrent) {
+
+      var stateDataToGenerateToken = updateState(newState, pCurrent);
+
+      if (stateDataToGenerateToken == null) return null;
+
+      return generateToken(pCurrent, stateDataToGenerateToken);
+    }
+
+    /**
+     * update newState and return oldState to generate token
+     *
+     * @param newState the new state
+     * @param pCurrent current pos
+     * @return oldState
+     */
+    private StateData updateState(State newState,
+                                  int pCurrent) {
       var currentStateData = this.stateData;
 
       if (currentStateData.state == newState) {
         return null;
       }
 
+      // stInteger -> stDouble
       if (currentStateData.state == stInteger && newState == stDouble) {
         this.stateData = new StateData(stDouble, currentStateData.start);
         return null;
@@ -120,10 +146,15 @@ public class DLexer implements Lexer {
 
       if (currentStateData.state == stInit) return null;
 
-      var tokenSlice = new Slice(currentStateData.start, pCurrent - 1);
+      return currentStateData;
+    }
+
+    private Token generateToken(int pEnd,
+                                StateData stateData) {
+      var tokenSlice = new Slice(stateData.start, pEnd - 1);
       var tokenString = new String(this.chars, tokenSlice.start(), tokenSlice.length());
 
-      return switch (currentStateData.state) {
+      return switch (stateData.state) {
         case stInit -> null;
         case stInteger, stDouble -> {
           try {
