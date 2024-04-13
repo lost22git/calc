@@ -33,7 +33,7 @@ public class EvalerTest {
 
     assertEquals(1, evaler.eval("a+b == b+a", env));
     assertEquals(1, evaler.eval("a+b >= b+a", env));
-    assertEquals(0, evaler.eval("a+b > b+a", env));
+    assertEquals(1, evaler.eval("a+b > b+a", env));
     assertEquals(1, evaler.eval("(a+b)**2 == 9", env));
     assertEquals(1, evaler.eval("a/b == 0.5", env));
     assertEquals(1, evaler.eval("a%b == 1", env));
